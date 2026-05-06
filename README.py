@@ -1,305 +1,311 @@
 5
-import numpy as np
-import matplotlib.pyplot as plt
-from collections import Counter
+import random
+import gensim.downloader as api
 
-data = np.random.rand(100)
+# Load a pre-trained word embedding model
+model = api.load("glove-wiki-gigaword-50")  # 50D GloVe embeddings
 
-labels = ["Class1" if x <= 0.5 else "Class2" for x in data[:50]]
+def get_similar_words(seed_word, top_n=5):
+    """Retrieve similar words for the given seed word."""
+    try:
+        similar_words = [word for word, _ in model.most_similar(seed_word, topn=top_n)]
+        return similar_words
+    except KeyError:
+        return []
 
+def create_paragraph(seed_word):
+    """Generate a short paragraph using the seed word and its similar words."""
+    similar_words = get_similar_words(seed_word)
 
-def euclidean_distance(x1, x2):
-    return abs(x1 - x2)
+    if not similar_words:
+        return f"Could not find similar words for '{seed_word}'. Try another word!"
 
+    # Create a simple paragraph
+    paragraph = (
+        f"Once upon a time, a {seed_word} embarked on a journey. Along the way, it encountered "
+        f"a {random.choice(similar_words)}, which led it to a hidden {random.choice(similar_words)}. "
+        f"Despite the challenges, it found {random.choice(similar_words)} and embraced the "
+        f"adventure with {random.choice(similar_words)}. In the end, the journey was a tale of "
+        f"{random.choice(similar_words)} and discovery."
+    )
 
-def knn_classifier(train_data, train_labels, test_point, k):
-    distances = [(euclidean_distance(test_point, train_data[i]), train_labels[i]) for i in range(len(train_data))]
+    return paragraph
 
-    distances.sort(key=lambda x: x[0])
-    k_nearest_neighbors = distances[:k]
+# Example usage
+seed_word = input("Enter a seed word: ").strip().lower()
+print("\nGenerated Story:\n")
+print(create_paragraph(seed_word))
 
-    k_nearest_labels = [label for _, label in k_nearest_neighbors]
-
-    return Counter(k_nearest_labels).most_common(1)[0][0]
-
-
-train_data = data[:50]
-train_labels = labels
-
-test_data = data[50:]
-
-k_values = [1, 2, 3, 4, 5, 20, 30]
-
-print("--- k-Nearest Neighbors Classification ---")
-print("Training dataset: First 50 points labeled based on the rule (x <= 0.5 -> Class1, x > 0.5 -> Class2)")
-print("Testing dataset: Remaining 50 points to be classified\n")
-
-results = {}
-
-for k in k_values:
-    print(f"Results for k = {k}:")
-    classified_labels = [knn_classifier(train_data, train_labels, test_point, k) for test_point in test_data]
-    results[k] = classified_labels
-
-    for i, label in enumerate(classified_labels, start=51):
-        print(f"Point x{i} (value: {test_data[i - 51]:.4f}) is classified as {label}")
-    print("\n")
-
-print("Classification complete.\n")
-
-for k in k_values:
-    classified_labels = results[k]
-    class1_points = [test_data[i] for i in range(len(test_data)) if classified_labels[i] == "Class1"]
-    class2_points = [test_data[i] for i in range(len(test_data)) if classified_labels[i] == "Class2"]
-
-    plt.figure(figsize=(10, 6))
-    plt.scatter(train_data, [0] * len(train_data), c=["blue" if label == "Class1" else "red" for label in train_labels],
-                label="Training Data", marker="o")
-    plt.scatter(class1_points, [1] * len(class1_points), c="blue", label="Class1 (Test)", marker="x")
-    plt.scatter(class2_points, [1] * len(class2_points), c="red", label="Class2 (Test)", marker="x")
-
-    plt.title(f"k-NN Classification Results for k = {k}")
-    plt.xlabel("Data Points")
-    plt.ylabel("Classification Level")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 6
-import numpy as np
-import matplotlib.pyplot as plt
+from transformers import pipeline
 
+# Load the sentiment analysis pipeline
+sentiment_analyzer = pipeline("sentiment-analysis")
 
-def gaussian_kernel(x, xi, tau):
-    return np.exp(-np.sum((x - xi) ** 2) / (2 * tau ** 2))
+def analyze_sentiment(text):
+    """Analyze sentiment of the input text using Hugging Face pipeline."""
+    result = sentiment_analyzer(text)
+    label = result[0]['label']
+    score = result[0]['score']
+    return f"Sentiment: {label} (Confidence: {score:.2f})"
 
-def locally_weighted_regression(x, X, y, tau):
-    m = X.shape[0]
-    weights = np.array([gaussian_kernel(x, X[i], tau) for i in range(m)])
-    W = np.diag(weights)
-    X_transpose_W = X.T @ W
-    theta = np.linalg.inv(X_transpose_W @ X) @ X_transpose_W @ y
-    return x @ theta
-
-np.random.seed(42)
-X = np.linspace(0, 2 * np.pi, 100)
-y = np.sin(X) + 0.1 * np.random.randn(100)
-X_bias = np.c_[np.ones(X.shape), X]
-
-x_test = np.linspace(0, 2 * np.pi, 200)
-x_test_bias = np.c_[np.ones(x_test.shape), x_test]
-tau = 0.5
-y_pred = np.array([locally_weighted_regression(xi, X_bias, y, tau) for xi in x_test_bias])
-
-plt.figure(figsize=(10, 6))
-plt.scatter(X, y, color='red', label='Training Data', alpha=0.7)
-plt.plot(x_test, y_pred, color='blue', label=f'LWR Fit (tau={tau})', linewidth=2)
-plt.xlabel('X', fontsize=12)
-plt.ylabel('y', fontsize=12)
-plt.title('Locally Weighted Regression', fontsize=14)
-plt.legend(fontsize=10)
-plt.grid(alpha=0.3)
-plt.show()
+# Example usage
+while True:
+    user_input = input("Enter a sentence for sentiment analysis (or 'exit' to quit): ").strip()
+    if user_input.lower() == 'exit':
+        break
+    print(analyze_sentiment(user_input))
 
 7
+from transformers import pipeline
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.datasets import fetch_california_housing
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.pipeline import make_pipeline
-from sklearn.metrics import mean_squared_error, r2_score
+# Load the summarization model
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
-def linear_regression_california():
-    housing = fetch_california_housing(as_frame=True)
-    X = housing.data[["AveRooms"]] 
-    y = housing.target 
+# Take user input for the text passage
+text = input("Enter the text you want to summarize:\n")
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Summarize the text
+summary = summarizer(text, max_length=100, min_length=30, do_sample=False)
 
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-
-    plt.scatter(X_test, y_test, color="blue", label="Actual")
-    plt.plot(X_test, y_pred, color="red", label="Predicted")
-    plt.xlabel("Average number of rooms (AveRooms)")
-    plt.ylabel("Median value of homes ($100,000)")
-    plt.title("Linear Regression - California Housing Dataset")
-    plt.legend()
-    plt.show()
-
-    print("Linear Regression - California Housing Dataset")
-    print("Mean Squared Error:", mean_squared_error(y_test, y_pred))
-    print("R^2 Score:", r2_score(y_test, y_pred))
-
-
-def polynomial_regression_auto_mpg():
-    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data"
-    column_names = ["mpg", "cylinders", "displacement", "horsepower", "weight", "acceleration", "model_year", "origin"]
-    data = pd.read_csv(url, sep='\s+', names=column_names, na_values="?")
-    data = data.dropna()
-
-    X = data["displacement"].values.reshape(-1, 1) 
-    y = data["mpg"].values
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    poly_model = make_pipeline(PolynomialFeatures(degree=2), StandardScaler(), LinearRegression())
-    poly_model.fit(X_train, y_train)
-
-    y_pred = poly_model.predict(X_test)
-
-    plt.scatter(X_test, y_test, color="blue", label="Actual")
-    plt.scatter(X_test, y_pred, color="red", label="Predicted")
-    plt.xlabel("Displacement")
-    plt.ylabel("Miles per gallon (mpg)")
-    plt.title("Polynomial Regression - Auto MPG Dataset")
-    plt.legend()
-    plt.show()
-
-    print("Polynomial Regression - Auto MPG Dataset")
-    print("Mean Squared Error:", mean_squared_error(y_test, y_pred))
-    print("R^2 Score:", r2_score(y_test, y_pred))
-
-
-if __name__ == "__main__":
-    print("Demonstrating Linear Regression and Polynomial Regression\n")
-    linear_regression_california()
-    polynomial_regression_auto_mpg()
+# Print the summarized text
+print("\nSummarized Text:")
+print(summary[0]['summary_text'])
 
 8
+from langchain.prompts import PromptTemplate
+from langchain_community.llms import Cohere
 
-# Importing necessary libraries
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score
-from sklearn import tree
+# Set your Cohere API key
+COHERE_API_KEY = "YOUR_COHERE_API"  # Replace with your actual API key
 
-data = load_breast_cancer()
-X = data.data
-y = data.target
+# Read the text file
+file_path = "Artificial_Intelligence.txt"  # Replace with your file name
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-clf = DecisionTreeClassifier(random_state=42)
-clf.fit(X_train, y_train)
-y_pred = clf.predict(X_test)
+with open(file_path, "r", encoding="utf-8") as file:
+    document_text = file.read()
 
-accuracy = accuracy_score(y_test, y_pred)
-print(f"Model Accuracy: {accuracy * 100:.2f}%")
-new_sample = np.array([X_test[0]])
-prediction = clf.predict(new_sample)
+print("File loaded successfully!")
 
-prediction_class = "Benign" if prediction == 1 else "Malignant"
-print(f"Predicted Class for the new sample: {prediction_class}")
+# Create a simple prompt template
+prompt_template = PromptTemplate(
+    input_variables=["text"],
+    template="Summarize the following text in a simple way:\n\n{text}"
+)
 
-plt.figure(figsize=(12,8))
-tree.plot_tree(clf, filled=True, feature_names=data.feature_names, class_names=data.target_names)
-plt.title("Decision Tree - Breast Cancer Dataset")
-plt.show()
+# Initialize the Cohere model
+llm = Cohere(cohere_api_key=COHERE_API_KEY)
 
+# Run the text through Cohere
+output = llm.invoke(prompt_template.format(text=document_text))
+
+# Display the result
+print("Summary:\n", output)
 
 9
+from pydantic import BaseModel
+import wikipediaapi
 
-import numpy as np
-from sklearn.datasets import fetch_olivetti_faces
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import matplotlib.pyplot as plt
+# Define the Pydantic schema
+class InstitutionDetails(BaseModel):
+    name: str
+    founder: str
+    founded_year: str
+    branches: str
+    employees: str
+    summary: str
 
-data = fetch_olivetti_faces(shuffle=True, random_state=42)
-X = data.data
-y = data.target
+# Wikipedia extraction function
+def fetch_institution_details(institution_name: str) -> InstitutionDetails:
+    wiki_wiki = wikipediaapi.Wikipedia(
+        user_agent="MyWikipediaScraper/1.0 (contact: myemail@example.com)",
+        language="en"
+    )
+    page = wiki_wiki.page(institution_name)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    if not page.exists():
+        raise ValueError("Institution page does not exist on Wikipedia")
 
-gnb = GaussianNB()
-gnb.fit(X_train, y_train)
-y_pred = gnb.predict(X_test)
+    # Extract information (this part needs actual content parsing)
+    summary = " ".join(page.summary.split(".")[:4]) + "."
 
-accuracy = accuracy_score(y_test, y_pred)
-print(f'Accuracy: {accuracy * 100:.2f}%')
+    # Placeholder extraction logic
+    founder = "Not Available"
+    founded_year = "Not Available"
+    branches = "Not Available"
+    employees = "Not Available"
 
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred, zero_division=1))
+    for section in page.sections:
+        if "founder" in section.title.lower():
+            founder = section.text.split(". ")[0]
+        if "founded" in section.title.lower():
+            founded_year = section.text.split(". ")[0]
+        if "branches" in section.title.lower():
+            branches = section.text.split(". ")[0]
+        if "employees" in section.title.lower():
+            employees = section.text.split(". ")[0]
 
-print("\nConfusion Matrix:")
-print(confusion_matrix(y_test, y_pred))
+    return InstitutionDetails(
+        name=institution_name,
+        founder=founder,
+        founded_year=founded_year,
+        branches=branches,
+        employees=employees,
+        summary=summary
+    )
 
-cross_val_accuracy = cross_val_score(gnb, X, y, cv=5, scoring='accuracy')
-print(f'\nCross-validation accuracy: {cross_val_accuracy.mean() * 100:.2f}%')
-
-fig, axes = plt.subplots(3, 5, figsize=(12, 8))
-for ax, image, label, prediction in zip(axes.ravel(), X_test, y_test, y_pred):
-    ax.imshow(image.reshape(64, 64), cmap=plt.cm.gray)
-    ax.set_title(f"True: {label}, Pred: {prediction}")
-    ax.axis('off')
-
-plt.show()
+# Example invocation
+institution_name = input("Enter Institution Name: ")
+try:
+    details = fetch_institution_details(institution_name)
+    print(details.model_dump_json(indent=4))
+except ValueError as e:
+    print(str(e))
 
 
 10
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.datasets import load_breast_cancer
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.metrics import confusion_matrix, classification_report
+import requests
+import PyPDF2
+import re
+import string
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-data = load_breast_cancer()
-X = data.data
-y = data.target
+# ─── STEP 1: Download IPC PDF ───────────────────────────────────────────────
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+def download_ipc_pdf(url, save_path="ipc.pdf"):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        with open(save_path, 'wb') as f:
+            f.write(response.content)
+        print(f"Downloaded IPC PDF to: {save_path}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
-kmeans = KMeans(n_clusters=2, random_state=42)
-y_kmeans = kmeans.fit_predict(X_scaled)
+# ─── STEP 2: Extract text from PDF ──────────────────────────────────────────
 
-print("Confusion Matrix:")
-print(confusion_matrix(y, y_kmeans))
-print("\nClassification Report:")
-print(classification_report(y, y_kmeans))
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    try:
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text += page.extract_text() or ""
+        return text
+    except FileNotFoundError:
+        print(f"Error: File not found at {pdf_path}")
+        return ""
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return ""
 
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
+# ─── STEP 3: Preprocess text ────────────────────────────────────────────────
 
-df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
-df['Cluster'] = y_kmeans
-df['True Label'] = y
+def preprocess_text(text):
+    if not text:
+        return []
+    text = text.lower()
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    tokens = word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    tokens = [word for word in tokens if word not in stop_words]
+    return tokens
 
-plt.figure(figsize=(8, 6))
-sns.scatterplot(data=df, x='PC1', y='PC2', hue='Cluster', palette='Set1', s=100, edgecolor='black', alpha=0.7)
-plt.title('K-Means Clustering of Breast Cancer Dataset')
-plt.xlabel('Principal Component 1')
-plt.ylabel('Principal Component 2')
-plt.legend(title="Cluster")
-plt.show()
+# ─── STEP 4: Create index ───────────────────────────────────────────────────
 
-plt.figure(figsize=(8, 6))
-sns.scatterplot(data=df, x='PC1', y='PC2', hue='True Label', palette='coolwarm', s=100, edgecolor='black', alpha=0.7)
-plt.title('True Labels of Breast Cancer Dataset')
-plt.xlabel('Principal Component 1')
-plt.ylabel('Principal Component 2')
-plt.legend(title="True Label")
-plt.show()
+def create_index(text):
+    index = {}
+    try:
+        section_pattern = r"((?:CHAPTER|SECTION)\s+\w+\.?\s+.*?)(?:(?:CHAPTER|SECTION)\s+\w+\.?\s+|$)"
+        matches = re.findall(section_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in matches:
+            title_match = re.search(r"^(?:CHAPTER|SECTION)\s+\w+\.?\s+(.*?)(?=\n)", match, re.DOTALL | re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).strip()
+                content = match[title_match.end():].strip()
+                index[title] = content
+        return index
+    except Exception as e:
+        print(f"Error creating index: {e}")
+        return {}
 
-plt.figure(figsize=(8, 6))
-sns.scatterplot(data=df, x='PC1', y='PC2', hue='Cluster', palette='Set1', s=100, edgecolor='black', alpha=0.7)
-centers = pca.transform(kmeans.cluster_centers_)
-plt.scatter(centers[:, 0], centers[:, 1], s=200, c='red', marker='X', label='Centroids')
-plt.title('K-Means Clustering with Centroids')
-plt.xlabel('Principal Component 1')
-plt.ylabel('Principal Component 2')
-plt.legend(title="Cluster")
-plt.show()
+# ─── STEP 5: Find most relevant section ─────────────────────────────────────
+
+def get_most_relevant_section(query, index):
+    try:
+        if not index:
+            return None
+        sections = list(index.values())
+        section_titles = list(index.keys())
+        vectorizer = TfidfVectorizer()
+        tfidf_matrix = vectorizer.fit_transform(sections + [query])
+        query_vector = tfidf_matrix[-1]
+        similarities = cosine_similarity(query_vector, tfidf_matrix[:-1]).flatten()
+        if not similarities.any():
+            return None
+        most_relevant_index = similarities.argmax()
+        return section_titles[most_relevant_index]
+    except Exception as e:
+        print(f"Error finding relevant section: {e}")
+        return None
+
+def get_section_text(section_title, index):
+    try:
+        return index.get(section_title)
+    except Exception as e:
+        print(f"Error getting section text: {e}")
+        return None
+
+# ─── STEP 6: Generate response ──────────────────────────────────────────────
+
+def generate_response(query, index):
+    if not index:
+        return "I'm sorry, I cannot process the IPC without the index. Please ensure the IPC content is loaded."
+    relevant_section_title = get_most_relevant_section(query, index)
+    if not relevant_section_title:
+        return "I'm sorry, I couldn't find relevant information in the IPC for your query."
+    section_text = get_section_text(relevant_section_title, index)
+    if not section_text:
+        return "I found the relevant section, but I'm unable to retrieve the details."
+    cleaned_text = re.sub(r'\n\s*\n+', '\n\n', section_text.strip())
+    cleaned_text = re.sub(r'[\t]+\n', '\n', cleaned_text)
+    cleaned_text = re.sub(r'\n+', '\n', cleaned_text)
+    response = f"Here's what I found in the Indian Penal Code, **{relevant_section_title}**:\n\n{cleaned_text}"
+    return response
+
+# ─── STEP 7: Chatbot loop ────────────────────────────────────────────────────
+
+def chatbot(index):
+    print("Welcome to the Indian Penal Code Chatbot! Ask me anything about the IPC. Type 'exit' to quit.")
+    while True:
+        query = input("You: ")
+        if query.lower() == "exit":
+            break
+        response = generate_response(query, index)
+        print(f"Chatbot: {response}\n")
+
+# ─── MAIN ────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    nltk.download('punkt')
+    nltk.download('stopwords')
+
+    ipc_pdf_url = "https://www.indiacode.nic.in/bitstream/123456789/4219/1/THE-INDIAN-PENAL-CODE-1860.pdf"
+    download_ipc_pdf(ipc_pdf_url)
+
+    pdf_path = "ipc.pdf"
+    ipc_text = extract_text_from_pdf(pdf_path)
+    if ipc_text:
+        ipc_index = create_index(ipc_text)
+        if ipc_index:
+            chatbot(ipc_index)
+        else:
+            print("Failed to create index. Chatbot cannot start.")
+    else:
+        print("Failed to extract text from PDF. Chatbot cannot start.")
